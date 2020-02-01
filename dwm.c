@@ -40,11 +40,15 @@
 #include <X11/extensions/Xinerama.h>
 #endif /* XINERAMA */
 #include <X11/Xft/Xft.h>
+#include <X11/extensions/shape.h>
 
 #include "drw.h"
 #include "util.h"
 
 /* macros */
+#define win_size(W, gx, gy, gw, gh) \
+    XGetGeometry(dpy, W, &(Window){0}, gx, gy, gw, gh, \
+                 &(unsigned int){0}, &(unsigned int){0})
 #define BUTTONMASK              (ButtonPressMask|ButtonReleaseMask)
 #define CLEANMASK(mask)         (mask & ~(numlockmask|LockMask) & (ShiftMask|ControlMask|Mod1Mask|Mod2Mask|Mod3Mask|Mod4Mask|Mod5Mask))
 #define INTERSECT(x,y,w,h,m)    (MAX(0, MIN((x)+(w),(m)->wx+(m)->ww) - MAX((x),(m)->wx)) \
@@ -235,6 +239,7 @@ static int xerror(Display *dpy, XErrorEvent *ee);
 static int xerrordummy(Display *dpy, XErrorEvent *ee);
 static int xerrorstart(Display *dpy, XErrorEvent *ee);
 static void zoom(const Arg *arg);
+static void win_round_corners(Window w, int rad);
 
 /* variables */
 static const char broken[] = "broken";
@@ -627,6 +632,8 @@ configurerequest(XEvent *e)
 		XConfigureWindow(dpy, ev->window, ev->value_mask, &wc);
 	}
 	XSync(dpy, False);
+
+	win_round_corners(ev->window, ROUND_CORNERS);
 }
 
 Monitor *
@@ -1103,6 +1110,8 @@ maprequest(XEvent *e)
 		return;
 	if (!wintoclient(ev->window))
 		manage(ev->window, &wa);
+
+	win_round_corners(ev->window, ROUND_CORNERS);
 }
 
 void
@@ -2137,6 +2146,39 @@ zoom(const Arg *arg)
 		if (!c || !(c = nexttiled(c->next)))
 			return;
 	pop(c);
+}
+
+void win_round_corners(Window w, int rad) {
+    unsigned int ww, wh, dia = 2 * rad;
+
+    win_size(w, &(int){1}, &(int){1}, &ww, &wh);
+
+    if (ww < dia || wh < dia) return;
+
+    Pixmap mask = XCreatePixmap(dpy, w, ww, wh, 1);
+
+    if (!mask) return;
+
+    XGCValues xgcv;
+    GC shape_gc = XCreateGC(dpy, mask, 0, &xgcv);
+
+    if (!shape_gc) {
+        XFreePixmap(dpy, mask);
+        return;
+    }
+
+    XSetForeground(dpy, shape_gc, 0);
+    XFillRectangle(dpy, mask, shape_gc, 0, 0, ww, wh);
+    XSetForeground(dpy, shape_gc, 1);
+    XFillArc(dpy, mask, shape_gc, 0, 0, dia, dia, 0, 23040);
+    XFillArc(dpy, mask, shape_gc, ww-dia-1, 0, dia, dia, 0, 23040);
+    XFillArc(dpy, mask, shape_gc, 0, wh-dia-1, dia, dia, 0, 23040);
+    XFillArc(dpy, mask, shape_gc, ww-dia-1, wh-dia-1, dia, dia, 0, 23040);
+    XFillRectangle(dpy, mask, shape_gc, rad, 0, ww-dia, wh);
+    XFillRectangle(dpy, mask, shape_gc, 0, rad, ww, wh-dia);
+    XShapeCombineMask(dpy, w, ShapeBounding, 0, 0, mask, ShapeSet);
+    XFreePixmap(dpy, mask);
+    XFreeGC(dpy, shape_gc);
 }
 
 int

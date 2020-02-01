@@ -1,5 +1,7 @@
 /* See LICENSE file for copyright and license details. */
 
+#define ROUND_CORNERS 20
+
 /* appearance */
 static const unsigned int borderpx  = 3;        /* border pixel of windows */
 static const unsigned int gappx     = 5;        /* gaps between windows */
